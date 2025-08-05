@@ -1,40 +1,42 @@
 import streamlit as st
-import numpy as np
-import pickle
+import pandas as pd
+import matplotlib.pyplot as plt
+import seaborn as sns
 
-# Load mô hình đã huấn luyện
-with open("random_forest.pkl", "rb") as f:
-    model = pickle.load(f)
+st.set_page_config(layout="wide")
+st.title("Phân tích tác động của thời tiết đến tiêu thụ điện năng")
 
-st.title("Ảnh hưởng của thời tiết đến mức tiêu thụ điện")
+# Load dữ liệu
+@st.cache_data
+def load_data():
+    url = "https://raw.githubusercontent.com/phantuan1311/KhaiPhaDL/main/filtered_data.csv"
+    df = pd.read_csv(url)
+    df['time'] = pd.to_datetime(df['time'])
+    df['temp_c'] = df['temp'] - 273.15
+    return df
 
-st.write("Thay đổi các yếu tố thời tiết để xem ảnh hưởng đến mức tiêu thụ điện:")
+df = load_data()
 
-# Các thanh trượt
-temp_c = st.slider("Nhiệt độ (°C)", -10.0, 40.0, 20.0)
-humidity = st.slider("Độ ẩm (%)", 0, 100, 50)
-pressure = st.slider("Áp suất (hPa)", 900, 1050, 1013)
-wind_speed = st.slider("Tốc độ gió (m/s)", 0.0, 25.0, 3.0)
-rain_1h = st.slider("Lượng mưa 1h (mm)", 0.0, 50.0, 0.0)
-snow_3h = st.slider("Tuyết rơi 3h (mm)", 0.0, 50.0, 0.0)
-clouds_all = st.slider("Mây che phủ (%)", 0, 100, 20)
-hour = st.slider("Giờ trong ngày", 0, 23, 12)
-day_of_week = st.slider("Thứ trong tuần (0=Thứ 2)", 0, 6, 2)
-month = st.slider("Tháng", 1, 12, 8)
+# Hiển thị bảng dữ liệu
+st.subheader("Dữ liệu đã xử lý")
+st.dataframe(df.head())
 
-# Biến môi trường năng lượng nếu có
-price_actual = st.slider("Giá điện (€/MWh)", 0.0, 300.0, 50.0)
-gen_solar = st.slider("Điện mặt trời (MW)", 0.0, 5000.0, 500.0)
-gen_wind = st.slider("Điện gió (MW)", 0.0, 10000.0, 2000.0)
-gen_coal = st.slider("Điện than (MW)", 0.0, 20000.0, 5000.0)
-gen_hydro = st.slider("Thủy điện bơm tích trữ (MW)", 0.0, 5000.0, 1000.0)
+# Biểu đồ phân tán giữa từng biến thời tiết và mức tiêu thụ
+st.subheader("Mối quan hệ giữa các yếu tố thời tiết và tiêu thụ điện")
 
-# Tạo mảng đầu vào
-input_data = np.array([[temp_c, humidity, pressure, wind_speed, rain_1h, snow_3h, clouds_all,
-                        hour, day_of_week, month, price_actual, gen_solar, gen_wind, gen_coal, gen_hydro]])
+weather_features = ['temp_c', 'humidity', 'pressure', 'wind_speed', 'rain_1h', 'snow_3h', 'clouds_all']
 
-# Dự đoán
-prediction = model.predict(input_data)[0]
+for feature in weather_features:
+    fig, ax = plt.subplots()
+    sns.scatterplot(data=df, x=feature, y='total load actual', alpha=0.3, ax=ax)
+    ax.set_title(f"{feature} vs Total Load Actual")
+    ax.set_xlabel(feature)
+    ax.set_ylabel("Tiêu thụ điện năng (MW)")
+    st.pyplot(fig)
 
-st.subheader("👉 Mức tiêu thụ điện dự đoán:")
-st.metric(label="Total Load Actual (MW)", value=f"{prediction:,.2f}")
+# Biểu đồ tương quan
+st.subheader("Ma trận tương quan giữa các biến")
+fig_corr, ax_corr = plt.subplots(figsize=(12, 8))
+corr = df[weather_features + ['total load actual']].corr()
+sns.heatmap(corr, annot=True, cmap="coolwarm", fmt=".2f", ax=ax_corr)
+st.pyplot(fig_corr)
