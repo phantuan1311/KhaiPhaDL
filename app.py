@@ -1,24 +1,68 @@
 import streamlit as st
-from preprocessing import preprocess_input
-from model_loader import load_model
+import pandas as pd
+import matplotlib.pyplot as plt
+import seaborn as sns
 
-st.title("🧠 Dự đoán Tổng Tiêu thụ Điện (Regression)")
+# Cấu hình giao diện
+st.set_page_config(page_title="Phân tích tác động thời tiết tới tiêu thụ điện", layout="wide")
 
-# Nhập các thông số tương ứng
-temp = st.number_input("Nhiệt độ (°C)", value=25.0)
-humidity = st.number_input("Độ ẩm (%)", value=60.0)
-pressure = st.number_input("Áp suất (hPa)", value=1013.0)
-wind_speed = st.number_input("Tốc độ gió (m/s)", value=3.0)
-rain_1h = st.number_input("Lượng mưa 1h", value=0.0)
-snow_3h = st.number_input("Lượng tuyết 3h", value=0.0)
-clouds_all = st.number_input("Cloud cover (%)", value=50.0)
-hour = st.number_input("Giờ trong ngày (0–23)", value=12, min_value=0, max_value=23)
-day_of_week = st.number_input("Thứ (0=Thứ 2, …6=Chủ nhật)", value=2, min_value=0, max_value=6)
-month = st.number_input("Tháng (1–12)", value=6, min_value=1, max_value=12)
+# Tiêu đề chính
+st.title("⚡ Phân tích ảnh hưởng của điều kiện thời tiết tới mức tiêu thụ điện")
 
-if st.button("Dự đoán"):
-    X_input = preprocess_input(temp, humidity, pressure, wind_speed,
-                               rain_1h, snow_3h, clouds_all, hour, day_of_week, month)
-    model = load_model()
-    pred = model.predict(X_input)
-    st.success(f"Dự đoán: **{pred[0]:,.2f} MW**")
+st.markdown("""
+Ứng dụng này giúp trực quan hóa mối quan hệ giữa các yếu tố thời tiết (nhiệt độ, độ ẩm, tốc độ gió, v.v...) với lượng tiêu thụ điện năng thực tế. Dữ liệu được lấy từ tập hợp thời gian thực của châu Âu, đã qua xử lý.
+""")
+
+# Tải dữ liệu đã xử lý từ GitHub hoặc local (tùy môi trường deploy)
+@st.cache_data
+def load_data():
+    url = "https://raw.githubusercontent.com/phantuan1311/KhaiPhaDL/main/merged_data.csv"
+    df = pd.read_csv(url)
+    df['time'] = pd.to_datetime(df['time'])
+    return df
+
+df = load_data()
+
+# --- Giao diện chọn lọc ---
+st.sidebar.header("⚙️ Tuỳ chọn hiển thị")
+selected_feature = st.sidebar.selectbox("Chọn biến thời tiết để phân tích", 
+    ['temp_c', 'humidity', 'pressure', 'wind_speed', 'rain_1h', 'snow_3h', 'clouds_all'])
+
+# --- Phân tích hồi quy tuyến tính ---
+from sklearn.linear_model import LinearRegression
+from sklearn.metrics import r2_score
+
+X = df[[selected_feature]]
+y = df['total load actual']
+
+model = LinearRegression()
+model.fit(X, y)
+y_pred = model.predict(X)
+r2 = r2_score(y, y_pred)
+
+# --- Hiển thị biểu đồ ---
+st.subheader(f"📊 Mối quan hệ giữa `{selected_feature}` và tiêu thụ điện")
+fig, ax = plt.subplots(figsize=(10, 6))
+sns.scatterplot(x=selected_feature, y='total load actual', data=df, alpha=0.4, ax=ax)
+sns.lineplot(x=df[selected_feature], y=y_pred, color='red', label='Hồi quy tuyến tính', ax=ax)
+ax.set_xlabel(selected_feature)
+ax.set_ylabel("Tiêu thụ điện (MW)")
+ax.set_title(f"R² = {r2:.4f}")
+ax.grid(True)
+st.pyplot(fig)
+
+# --- Hiển thị hệ số tương quan ---
+st.subheader("📈 Phân tích tương quan Pearson giữa các biến")
+correlation = df[['total load actual', 'temp_c', 'humidity', 'pressure', 'wind_speed', 
+                  'rain_1h', 'snow_3h', 'clouds_all']].corr()
+fig2, ax2 = plt.subplots(figsize=(10, 6))
+sns.heatmap(correlation, annot=True, cmap="coolwarm", fmt=".2f", ax=ax2)
+st.pyplot(fig2)
+
+# --- Giải thích ---
+st.markdown("#### 📌 Giải thích:")
+st.markdown("""
+- **R² (R-squared)** thể hiện mức độ giải thích của biến thời tiết tới biến tiêu thụ điện năng.
+- **Biểu đồ phân tán + đường hồi quy** giúp bạn nhìn thấy xu hướng.
+- **Ma trận tương quan** giúp đánh giá ảnh hưởng tổng thể giữa nhiều yếu tố thời tiết với lượng điện tiêu thụ.
+""")
